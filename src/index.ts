@@ -1,14 +1,14 @@
-type XTextTag = string | number
-type XProps<T extends AnyObject> = { children: Array<XElement<AnyObject>> } & T
+type CTextTag = string | number
+type CProps<T extends AnyObject> = { children: Array<CElement<AnyObject>> } & T
 
-export type XTextElement<T extends XTextTag> = { type: string; props: XProps<{ nodeValue: T }> }
-export type XElement<T extends AnyObject> = { type: string; props: XProps<T> } | XTextElement<XTextTag>
+export type CTextElement<T extends CTextTag> = { type: string; props: CProps<{ nodeValue: T }> }
+export type CElement<T extends AnyObject> = { type: string; props: CProps<T> } | CTextElement<CTextTag>
 
-export const createElement = <T extends AnyObject>(
+const createElement = <T extends AnyObject>(
 	type: string,
 	props: T = {} as any,
-	...children: Array<XElement<AnyObject> | XTextTag>
-): XElement<T> => ({
+	...children: Array<CElement<AnyObject> | CTextTag>
+): CElement<T> => ({
 	type,
 	props: {
 		...props,
@@ -16,10 +16,15 @@ export const createElement = <T extends AnyObject>(
 	}
 })
 
-export const createTextElement = <T extends XTextTag>(text: T): XTextElement<T> => ({
+const createTextElement = <T extends CTextTag>(text: T): CTextElement<T> => ({
 	type: "TEXT_ELEMENT",
 	props: {
 		nodeValue: text,
 		children: []
 	}
 })
+
+export const CReact = {
+	createElement,
+	createTextElement
+}
