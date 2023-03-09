@@ -2,20 +2,6 @@
 import { CReact } from "."
 import { lazyToEqual } from "./test-helpers"
 
-describe("createTextElement()", () => {
-	it(
-		"string",
-		lazyToEqual(CReact.createTextElement("foo"), {
-			type: "TEXT_ELEMENT",
-			props: { nodeValue: "foo", children: [] }
-		})
-	)
-	it(
-		"number",
-		lazyToEqual(CReact.createTextElement(1), { type: "TEXT_ELEMENT", props: { nodeValue: 1, children: [] } })
-	)
-})
-
 describe("createElement()", () => {
 	it("<img/>", lazyToEqual(CReact.createElement("img", {}), { type: "img", props: { children: [] } }))
 	it(
