@@ -1,0 +1,36 @@
+{
+	"$schema": "https://json.schemastore.org/tsconfig",
+	"display": "Default",
+	"compilerOptions": {
+		"declaration": true,
+		"forceConsistentCasingInFileNames": true,
+		"incremental": true,
+		"inlineSources": false,
+		"lib": [
+			"ES2021",
+			"DOM",
+			"DOM.Iterable"
+		],
+		"module": "esnext",
+		"moduleResolution": "node",
+		"noUnusedParameters": false,
+		"preserveWatchOutput": true,
+		"skipLibCheck": true,
+		"isolatedModules": true,
+		"typeRoots": [
+			"./node_modules/@types"
+		],
+		"allowSyntheticDefaultImports": true,
+		"jsx": "react",
+		"declarationMap": true,
+		"strict": true,
+		"resolveJsonModule": true,
+		"esModuleInterop": true,
+		"composite": true,
+		"downlevelIteration": true,
+		"baseUrl": ".",
+		"allowJs": false,
+		"strictNullChecks": true,
+		"noUnusedLocals": true
+	}
+}
