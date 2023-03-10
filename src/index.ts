@@ -62,13 +62,14 @@ const workLoop = (deadline: IdleDeadline) => {
 // requestIdleCallback(workLoop)
 
 export const buildChildren = (fiber: Fiber) => {
-	const { children } = fiber.props
-	for (let prev: NFiber = null, i = 0; i < children.length; i++) {
-		const current = Fiber(children[i], fiber)
-		if (i === 0) fiber.child = current
-		else (prev as Fiber).sibling = current
-		prev = current
-	}
+	let prev: NFiber = null
+	fiber.props.children
+		.map(child => Fiber(child, fiber))
+		.forEach(current => {
+			if (!prev) fiber.child = current
+			else prev.sibling = current
+			prev = current
+		})
 }
 const performUnitOfWork = (fiber: Fiber): NFiber => {
 	if (!fiber.dom) fiber.dom = createDom(fiber)
