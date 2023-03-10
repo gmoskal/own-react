@@ -10,7 +10,7 @@
 		"lint": "eslint \"src/**/*.{ts,tsx}\" --cache --fix",
 		"test": "jest",
 		"build": "rm -rf docs; npx parcel build index.html --public-url . --out-dir docs",
-	    "start": "parcel serve *.html --no-autoinstall"
+		"start": "parcel serve *.html --no-autoinstall"
 	},
 	"devDependencies": {
 		"@types/jest": "^29.4.0",
