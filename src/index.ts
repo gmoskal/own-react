@@ -24,17 +24,16 @@ const createTextElement = <T extends CTextTag>(text: T): CTextElement<T> => ({
 
 const keys = <T extends AnyObject>(o: T) => Object.keys(o) as any as Array<keyof T>
 
-const render = ({ type, props }: CElement, dest: HTMLElement) => {
+const createDom = <T extends Pick<Fiber, "type" | "props">>({ type, props }: T) => {
 	const node = type === TEXT_ELEMENT ? document.createTextNode("") : document.createElement(type)
 	keys(props)
 		.filter(key => key !== "children")
 		.forEach(name => ((node as any)[name] = props[name]))
-	if (type !== TEXT_ELEMENT) props.children.forEach(child => render(child, node as HTMLElement))
-	dest.appendChild(node)
+	return node
 }
 
 type NFiber = Fiber | null
-type Fiber<T extends AnyObject = AnyObject> = {
+export type Fiber<T extends AnyObject = AnyObject> = {
 	props: CProps<T>
 	type: string
 	dom: HTMLElement | Text | null
@@ -43,7 +42,7 @@ type Fiber<T extends AnyObject = AnyObject> = {
 	sibling: NFiber
 }
 
-const Fiber = ({ type, props }: CElement, parent: Fiber): Fiber => ({
+export const Fiber = ({ type, props }: CElement, parent: NFiber = null): Fiber => ({
 	type,
 	props,
 	parent,
@@ -51,14 +50,6 @@ const Fiber = ({ type, props }: CElement, parent: Fiber): Fiber => ({
 	child: null,
 	sibling: null
 })
-
-const createDom = (fiber: Fiber) => {
-	const dom = fiber.type === TEXT_ELEMENT ? document.createTextNode("") : document.createElement(fiber.type)
-	keys(fiber.props)
-		.filter(key => key !== "children")
-		.forEach(name => ((dom as any)[name] = fiber.props[name]))
-	return dom
-}
 
 let nextUnitOfWork: NFiber = null
 
@@ -68,21 +59,22 @@ const workLoop = (deadline: IdleDeadline) => {
 	requestIdleCallback(workLoop)
 }
 
-requestIdleCallback(workLoop)
+// requestIdleCallback(workLoop)
 
+export const buildChildren = (fiber: Fiber) => {
+	const { children } = fiber.props
+	for (let prev: NFiber = null, i = 0; i < children.length; i++) {
+		const current = Fiber(children[i], fiber)
+		if (i === 0) fiber.child = current
+		else (prev as Fiber).sibling = current
+		prev = current
+	}
+}
 const performUnitOfWork = (fiber: Fiber): NFiber => {
 	if (!fiber.dom) fiber.dom = createDom(fiber)
 	if (fiber.parent) fiber.parent.dom?.appendChild(fiber.dom)
 
-	const { children } = fiber.props
-
-	for (let prevSibling: NFiber = null, i = 0; i < children.length; i++) {
-		const element = children[i]
-		const newFiber = Fiber(element, fiber)
-		if (i === 0) fiber.child = newFiber
-		else if (prevSibling) prevSibling.sibling = newFiber
-		prevSibling = newFiber
-	}
+	buildChildren(fiber)
 
 	if (fiber.child) return fiber.child
 
@@ -91,4 +83,9 @@ const performUnitOfWork = (fiber: Fiber): NFiber => {
 	return null
 }
 
-export const CReact = { createElement, render }
+const blockingRender = ({ type, props }: CElement, dest: HTMLElement) => {
+	const node = createDom({ type, props })
+	if (type !== TEXT_ELEMENT) props.children.forEach(child => blockingRender(child, node as HTMLElement))
+	dest.appendChild(node)
+}
+export const CReact = { createElement, render: blockingRender }

@@ -1,6 +1,31 @@
 /** @jsx CReact.createElement */
-import { CReact } from "."
-import { lazyToEqual } from "./test-helpers"
+import { buildChildren, CReact, Fiber } from "."
+import { lazyToEqual, toEqual } from "./test-helpers"
+
+describe("buildSiblings()", () => {
+	it("does nothing when no children are present", () => {
+		const h1 = Fiber({ type: "h1", props: { children: [] } })
+		buildChildren(h1)
+		expect(h1.child).toEqual(null)
+	})
+
+	it("creates 1st child", () => {
+		const h1 = Fiber({ type: "h1", props: { children: [{ type: "b", props: { children: [] } }] } })
+		buildChildren(h1)
+		toEqual(h1.child, { parent: h1, child: null, dom: null, sibling: null, type: "b", props: { children: [] } })
+	})
+
+	it("creates 1st and 2nd child", () => {
+		const c1 = { type: "b", props: { children: [] } }
+		const c2 = { type: "span", props: { children: [] } }
+		const h1 = Fiber({ type: "h1", props: { children: [c1, c2] } })
+		buildChildren(h1)
+		const f2 = { type: "span", parent: h1, child: null, dom: null, sibling: null, props: { children: [] } }
+		const f1 = { type: "b", parent: h1, child: null, dom: null, sibling: f2, props: { children: [] } }
+		toEqual(h1.child, f1)
+		toEqual(h1.child?.sibling, f2)
+	})
+})
 
 describe("createElement()", () => {
 	it("<img/>", lazyToEqual(CReact.createElement("img", {}), { type: "img", props: { children: [] } }))
