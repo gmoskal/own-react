@@ -83,6 +83,7 @@ const performUnitOfWork = (fiber: Fiber): NFiber => {
 
 	return null
 }
+
 const render = (element: CElement, dom: HTMLElement) => {
 	rootFiber = {
 		dom,
@@ -94,6 +95,7 @@ const render = (element: CElement, dom: HTMLElement) => {
 	}
 	nextUnitOfWork = rootFiber
 }
+
 const init = () => requestIdleCallback(workLoop)
 const blockingRender = ({ type, props }: CElement, dest: HTMLElement) => {
 	const node = createDom({ type, props })
