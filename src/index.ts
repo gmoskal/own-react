@@ -52,14 +52,13 @@ export const Fiber = ({ type, props }: CElement, parent: NFiber = null): Fiber =
 })
 
 let nextUnitOfWork: NFiber = null
+let rootFiber: NFiber = null
 
 const workLoop = (deadline: IdleDeadline) => {
 	for (let pause = false; nextUnitOfWork && !pause; pause = deadline.timeRemaining() < 1)
 		nextUnitOfWork = performUnitOfWork(nextUnitOfWork)
 	requestIdleCallback(workLoop)
 }
-
-// requestIdleCallback(workLoop)
 
 export const buildChildren = (fiber: Fiber) => {
 	let prev: NFiber = null
@@ -71,6 +70,7 @@ export const buildChildren = (fiber: Fiber) => {
 			prev = current
 		})
 }
+
 const performUnitOfWork = (fiber: Fiber): NFiber => {
 	if (!fiber.dom) fiber.dom = createDom(fiber)
 	if (fiber.parent) fiber.parent.dom?.appendChild(fiber.dom)
@@ -83,10 +83,21 @@ const performUnitOfWork = (fiber: Fiber): NFiber => {
 
 	return null
 }
-
+const render = (element: CElement, dom: HTMLElement) => {
+	rootFiber = {
+		dom,
+		props: { children: [element] },
+		parent: null,
+		child: null,
+		sibling: null,
+		type: "ROOT"
+	}
+	nextUnitOfWork = rootFiber
+}
+const init = () => requestIdleCallback(workLoop)
 const blockingRender = ({ type, props }: CElement, dest: HTMLElement) => {
 	const node = createDom({ type, props })
 	if (type !== TEXT_ELEMENT) props.children.forEach(child => blockingRender(child, node as HTMLElement))
 	dest.appendChild(node)
 }
-export const CReact = { createElement, render: blockingRender }
+export const CReact = { createElement, render, blockingRender, init }
