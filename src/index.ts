@@ -1,7 +1,7 @@
 export const keys = <T extends AnyObject>(o: T) => Object.keys(o) as any as Array<keyof T>
 
 type CTextTag = string | number
-type CProps<T extends AnyObject = AnyObject> = { children: Array<CElement> } & T
+export type CProps<T extends AnyObject = AnyObject> = { children?: Array<CElement> } & T
 type CTextElement<T extends CTextTag> = { type: string; props: CProps<{ nodeValue: T }> }
 type CElement<T extends AnyObject = AnyObject> = { type: string; props: CProps<T> } | CTextElement<CTextTag>
 type NFiber = Fiber | null
@@ -17,6 +17,8 @@ export type Fiber<T extends AnyObject = AnyObject> = {
 	alternate?: NFiber
 	effectTag?: "Update" | "Add" | "Remove"
 }
+
+type FnFiber = TypedOmit<Fiber, "type"> & { type: F1<AnyObject, CElement> }
 
 const createElement = <T extends AnyObject>(
 	type: string,
@@ -103,32 +105,41 @@ const buildFibers = (fiber: NFiber, t: IdleDeadline) => {
 const workLoop = (deadline: IdleDeadline) => {
 	nextFiber = buildFibers(nextFiber, deadline)
 	if (!nextFiber && rootFiber) {
-		unmountedFibers.forEach(commit)
-		commit(rootFiber.child)
+		unmountedFibers.forEach(commitWork)
+		commitWork(rootFiber.child)
 		currentRootFiber = rootFiber
 		rootFiber = null
 	}
 	_requestIdleCallback(workLoop)
 }
 
-const buildFiber = (fiber: NFiber): NFiber => {
+const buildFiber = (fiber: NFiber | FnFiber): NFiber => {
 	if (!fiber) return null
-	if (!fiber.dom) fiber.dom = createDom(fiber)
 
-	reconcileChildren(fiber)
+	if (fiber.type instanceof Function) updateFunctionComponent(fiber as FnFiber)
+	else updateHostComponent(fiber as Fiber)
 
 	if (fiber.child) return fiber.child
 	for (; fiber; fiber = fiber.parent) if (fiber.sibling) return fiber.sibling
 	return null
 }
 
+const updateFunctionComponent = (fiber: FnFiber) => {
+	const children = [fiber.type(fiber.props)]
+	reconcileChildren(fiber as any as Fiber, children)
+}
+
+const updateHostComponent = (fiber: Fiber) => {
+	if (!fiber.dom) fiber.dom = createDom(fiber)
+	reconcileChildren(fiber, fiber.props.children || [])
+}
+
 let unmountedFibers: Fiber[] = []
 
-const reconcileChildren = (fiber: Fiber) => {
+const reconcileChildren = (fiber: Fiber, children: Array<CElement>) => {
 	let prev: NFiber = null
 	let oldFiber = fiber.alternate && fiber.alternate.child
-	const { children } = fiber.props
-	// TODO: use key property for arrays
+
 	for (let index = 0; index < children.length || oldFiber !== null; index++) {
 		const el = children[index]
 		let child: NFiber = null
@@ -155,25 +166,31 @@ const render = (element: CElement, dom: HTMLElement) => {
 	nextFiber = rootFiber
 }
 
-const commit = (fiber: NFiber) => {
+const commitDeletion = (fiber: Fiber, domParent: HTMLElement) => {
+	if (fiber.dom) domParent.removeChild(fiber.dom)
+	else commitDeletion(fiber.child as Fiber, domParent)
+}
+
+const commitWork = (fiber: NFiber) => {
 	if (!fiber) return
 
-	const { parent, child, sibling } = fiber
-	if (parent && parent.dom && fiber.dom)
-		switch (fiber.effectTag) {
-			case "Add":
-				parent.dom.appendChild(fiber.dom)
-				break
-			case "Remove":
-				parent.dom.removeChild(fiber.dom)
-				break
-			case "Update":
-				updateDom(fiber.dom as any, fiber.alternate?.props || { children: [] }, fiber.props)
-				break
-		}
+	let domParentFiber: Fiber = fiber.parent as Fiber
+	while (!domParentFiber.dom) domParentFiber = domParentFiber.parent as Fiber
+	const domParent = domParentFiber.dom
+	switch (fiber.effectTag) {
+		case "Add":
+			if (fiber.dom !== null) domParent.appendChild(fiber.dom)
+			break
+		case "Update":
+			updateDom(fiber.dom as any, fiber.alternate?.props || { children: [] }, fiber.props)
+			break
+		case "Remove":
+			commitDeletion(fiber, domParent as HTMLElement)
+			break
+	}
 
-	commit(child)
-	commit(sibling)
+	commitWork(fiber.child)
+	commitWork(fiber.sibling)
 }
 
 export const CReactInternal = { mkFiber, buildFibers, buildFiber, reconcileChildren, updateDom, getPropertiesDiff }

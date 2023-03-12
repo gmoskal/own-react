@@ -92,16 +92,29 @@ describe("updateDom()", () => {
 	})
 })
 
+describe("buildFiber()", () => {
+	it("builds functional component with given props", async () => {
+		const C1 = (p: { foo: number }) => <h1>{p.foo}</h1>
+		const fnCmp = { ...CReactInternal.mkFiber({ type: "fn", props: { foo: "bar" } }), type: C1 as any }
+		CReactInternal.buildFiber(fnCmp)
+		const child = fnCmp.child as Fiber
+		expect(child.type).toEqual("h1")
+		const grandson = (child.props.children || [])[0] as any as Fiber
+		expect(grandson.props.nodeValue).toEqual("bar")
+	})
+})
+
 describe("reconcileChildren()", () => {
 	it("does nothing when no children are present", () => {
 		const h1 = CReactInternal.mkFiber({ type: "h1", props: { children: [] } })
-		CReactInternal.reconcileChildren(h1)
+		CReactInternal.reconcileChildren(h1, [])
 		expect(h1.child).toEqual(null)
 	})
 
 	it("creates 1st child", () => {
-		const h1 = CReactInternal.mkFiber({ type: "h1", props: { children: [{ type: "b", props: { children: [] } }] } })
-		CReactInternal.reconcileChildren(h1)
+		const children = [{ type: "b", props: { children: [] } }]
+		const h1 = CReactInternal.mkFiber({ type: "h1", props: { children } })
+		CReactInternal.reconcileChildren(h1, children)
 		if (h1.child?.parent) h1.child.parent = null
 		toEqual(h1.child, {
 			parent: null,
@@ -118,8 +131,9 @@ describe("reconcileChildren()", () => {
 	it("creates 1st and 2nd child", () => {
 		const c1 = { type: "b", props: { children: [] } }
 		const c2 = { type: "span", props: { children: [] } }
-		const h1 = CReactInternal.mkFiber({ type: "h1", props: { children: [c1, c2] } })
-		CReactInternal.reconcileChildren(h1)
+		const children = [c1, c2]
+		const h1 = CReactInternal.mkFiber({ type: "h1", props: { children } })
+		CReactInternal.reconcileChildren(h1, children)
 		const f2: Fiber = {
 			type: "span",
 			parent: null,
