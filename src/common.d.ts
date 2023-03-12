@@ -3,7 +3,8 @@ declare namespace JSX {
 		[elemName: string]: any
 	}
 }
-type SMap<T> = Record<string, T>
+type TMap<K, T> = Record<K, T>
+type SMap<T> = TMap<string, T>
 type F0<Res = void> = () => Res
 type F1<A1, Res = void> = (a1: A1) => Res
 type AnyObject = Record<string | number, unknown>
