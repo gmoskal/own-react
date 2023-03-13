@@ -1,5 +1,6 @@
 export const keys = <T extends AnyObject>(o: T) => Object.keys(o) as any as Array<keyof T>
 
+type UseStateHook<T> = [T, F1<F1<T, T> | T, void>]
 type CTextTag = string | number
 export type CProps<T extends AnyObject = AnyObject> = { children?: Array<CElement> } & T
 type CTextElement<T extends CTextTag> = { type: string; props: CProps<{ nodeValue: T }> }
@@ -14,11 +15,11 @@ export type Fiber<T extends AnyObject = AnyObject> = {
 	parent: NFiber
 	child: NFiber
 	sibling: NFiber
-	alternate?: NFiber
+	alternate?: NFiber | FnFiber
 	effectTag?: "Update" | "Add" | "Remove"
 }
 
-type FnFiber = TypedOmit<Fiber, "type"> & { type: F1<AnyObject, CElement> }
+type FnFiber = TypedOmit<Fiber, "type"> & { type: F1<AnyObject, CElement>; hooks: Array<any> }
 
 const createElement = <T extends AnyObject>(
 	type: string,
@@ -83,9 +84,9 @@ const mkFiber = ({ type, props }: CElement, delta: Partial<Fiber> = {}): Fiber =
 	...delta
 })
 
-let currentRootFiber: NFiber = null
-let rootFiber: NFiber = null
-let nextFiber: NFiber = null
+let currentRoot: NFiber = null
+let wipRoot: NFiber = null
+let nextUnitOfWork: NFiber = null
 
 // for testing purposes
 let _requestIdleCallback: typeof requestIdleCallback
@@ -103,12 +104,12 @@ const buildFibers = (fiber: NFiber, t: IdleDeadline) => {
 }
 
 const workLoop = (deadline: IdleDeadline) => {
-	nextFiber = buildFibers(nextFiber, deadline)
-	if (!nextFiber && rootFiber) {
+	nextUnitOfWork = buildFibers(nextUnitOfWork, deadline)
+	if (!nextUnitOfWork && wipRoot) {
 		unmountedFibers.forEach(commitWork)
-		commitWork(rootFiber.child)
-		currentRootFiber = rootFiber
-		rootFiber = null
+		commitWork(wipRoot.child)
+		currentRoot = wipRoot
+		wipRoot = null
 	}
 	_requestIdleCallback(workLoop)
 }
@@ -123,8 +124,12 @@ const buildFiber = (fiber: NFiber | FnFiber): NFiber => {
 	for (; fiber; fiber = fiber.parent) if (fiber.sibling) return fiber.sibling
 	return null
 }
-
+let wipFiber: FnFiber | null = null
+let hookIndex: number = 0
 const updateFunctionComponent = (fiber: FnFiber) => {
+	wipFiber = fiber
+	hookIndex = 0
+	wipFiber.hooks = []
 	const children = [fiber.type(fiber.props)]
 	reconcileChildren(fiber as any as Fiber, children)
 }
@@ -161,9 +166,9 @@ const reconcileChildren = (fiber: Fiber, children: Array<CElement>) => {
 
 const render = (element: CElement, dom: HTMLElement) => {
 	if (!_requestIdleCallback) init()
-	rootFiber = mkFiber({ type: "ROOT", props: { children: [element] } }, { dom, alternate: currentRootFiber })
+	wipRoot = mkFiber({ type: "ROOT", props: { children: [element] } }, { dom, alternate: currentRoot })
 	unmountedFibers = []
-	nextFiber = rootFiber
+	nextUnitOfWork = wipRoot
 }
 
 const commitDeletion = (fiber: Fiber, domParent: HTMLElement) => {
@@ -193,5 +198,39 @@ const commitWork = (fiber: NFiber) => {
 	commitWork(fiber.sibling)
 }
 
+const getOldHook = <T>(): InternalUseStateHook<T> | null => {
+	if (!wipFiber) return null
+	const alternate = wipFiber.alternate as FnFiber
+	return alternate && alternate.hooks && alternate.hooks[hookIndex]
+}
+
+type InternalUseStateHook<T> = { state: T; queue: Array<F1<T, T> | T> }
+const useState = <T>(initial: T): UseStateHook<T> => {
+	const oldHook = getOldHook<T>()
+	const hook: InternalUseStateHook<T> = { state: oldHook ? oldHook.state : initial, queue: [] }
+	const actions = oldHook ? oldHook.queue : []
+	hook.state = actions.reduce((acc: T, action) => (action instanceof Function ? action(acc) : action), hook.state)
+
+	const setState = (action: F1<T, T> | T) => {
+		hook.queue.push(action)
+		wipRoot = mkFiber(
+			{
+				type: "ROOT",
+				props: currentRoot?.props || {}
+			},
+			{
+				dom: currentRoot?.dom || null,
+				alternate: currentRoot
+			}
+		)
+		nextUnitOfWork = wipRoot
+		unmountedFibers = []
+	}
+
+	if (wipFiber) wipFiber.hooks.push(hook)
+	hookIndex++
+	return [hook.state, setState]
+}
+
 export const CReactInternal = { mkFiber, buildFibers, buildFiber, reconcileChildren, updateDom, getPropertiesDiff }
-export const CReact = { createElement, render }
+export const CReact = { createElement, useState, render }
