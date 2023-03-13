@@ -1,14 +1,27 @@
-export const keys = <T extends AnyObject>(o: T) => Object.keys(o) as any as Array<keyof T>
+export type CProps<T extends Obj = Obj> = { children?: Array<CElement> } & T
 
 type UseStateHook<T> = [T, F1<F1<T, T> | T, void>]
 type CTextTag = string | number
-export type CProps<T extends AnyObject = AnyObject> = { children?: Array<CElement> } & T
 type CTextElement<T extends CTextTag> = { type: string; props: CProps<{ nodeValue: T }> }
-type CElement<T extends AnyObject = AnyObject> = { type: string; props: CProps<T> } | CTextElement<CTextTag>
+type CElement<T extends Obj = Obj> = { type: string; props: CProps<T> } | CTextElement<CTextTag>
 type NFiber = Fiber | null
+type FnFiber = TypedOmit<Fiber, "type"> & { type: F1<Obj, CElement>; hooks: Array<any> }
 type Key = string | number
 
-export type Fiber<T extends AnyObject = AnyObject> = {
+const TEXT_ELEMENT = "TEXT_ELEMENT"
+const WIP_ROOT = "WIP_ROOT"
+
+let currentRoot: NFiber = null
+let wipRoot: NFiber = null
+let nextUnitOfWork: NFiber = null
+let unmountedFibers: Fiber[] = []
+let wipFiber: FnFiber | null = null
+let hookIndex: number = 0
+
+// for testing purposes
+let _requestIdleCallback: typeof requestIdleCallback
+
+export type Fiber<T extends Obj = Obj> = {
 	props: CProps<T>
 	type: string
 	dom: HTMLElement | Text | null
@@ -19,9 +32,9 @@ export type Fiber<T extends AnyObject = AnyObject> = {
 	effectTag?: "Update" | "Add" | "Remove"
 }
 
-type FnFiber = TypedOmit<Fiber, "type"> & { type: F1<AnyObject, CElement>; hooks: Array<any> }
+const keys = <T extends Obj>(o: T) => Object.keys(o) as any as Array<keyof T>
 
-const createElement = <T extends AnyObject>(
+const createElement = <T extends Obj>(
 	type: string,
 	props: T = {} as any,
 	...children: Array<CElement | CTextTag>
@@ -33,7 +46,6 @@ const createElement = <T extends AnyObject>(
 	}
 })
 
-const TEXT_ELEMENT = "TEXT_ELEMENT"
 const createTextElement = <T extends CTextTag>(text: T): CTextElement<T> => ({
 	type: TEXT_ELEMENT,
 	props: { nodeValue: text, children: [] }
@@ -47,11 +59,11 @@ const createDom = <T extends Pick<Fiber, "type" | "props">>({ type, props }: T) 
 
 const isEvent = (key: Key) => key.toString().startsWith("on")
 const isProp = (key: Key) => key !== "children" && !isEvent(key)
-const isAdded = (prev: AnyObject, current: AnyObject) => (key: Key) => prev[key] !== current[key]
-const isRemoved = (current: AnyObject) => (key: Key) => !(key in current)
+const isAdded = (prev: Obj, current: Obj) => (key: Key) => prev[key] !== current[key]
+const isRemoved = (current: Obj) => (key: Key) => !(key in current)
 const toEventType = (name: Key) => name.toString().toLowerCase().substring(2)
 
-const getPropertiesDiff = (prev: AnyObject, current: AnyObject) => ({
+const getPropertiesDiff = (prev: Obj, current: Obj) => ({
 	listeners: {
 		removed: keys(prev)
 			.filter(isEvent)
@@ -64,7 +76,7 @@ const getPropertiesDiff = (prev: AnyObject, current: AnyObject) => ({
 	}
 })
 
-const updateDom = (dom: Fiber["dom"], prev: AnyObject, current: AnyObject) => {
+const updateDom = (dom: Fiber["dom"], prev: Obj, current: Obj) => {
 	if (!dom) return
 	const { listeners, props } = getPropertiesDiff(prev, current)
 	listeners.removed.forEach(n => dom.removeEventListener(toEventType(n), prev[n] as EventListener))
@@ -84,12 +96,6 @@ const mkFiber = ({ type, props }: CElement, delta: Partial<Fiber> = {}): Fiber =
 	...delta
 })
 
-let currentRoot: NFiber = null
-let wipRoot: NFiber = null
-let nextUnitOfWork: NFiber = null
-
-// for testing purposes
-let _requestIdleCallback: typeof requestIdleCallback
 const init = (requestIdleCb?: typeof requestIdleCallback) => {
 	_requestIdleCallback = requestIdleCb || requestIdleCallback
 	_requestIdleCallback(workLoop)
@@ -124,8 +130,7 @@ const buildFiber = (fiber: NFiber | FnFiber): NFiber => {
 	for (; fiber; fiber = fiber.parent) if (fiber.sibling) return fiber.sibling
 	return null
 }
-let wipFiber: FnFiber | null = null
-let hookIndex: number = 0
+
 const updateFunctionComponent = (fiber: FnFiber) => {
 	wipFiber = fiber
 	hookIndex = 0
@@ -139,8 +144,6 @@ const updateHostComponent = (fiber: Fiber) => {
 	reconcileChildren(fiber, fiber.props.children || [])
 }
 
-let unmountedFibers: Fiber[] = []
-
 const reconcileChildren = (fiber: Fiber, children: Array<CElement>) => {
 	let prev: NFiber = null
 	let oldFiber = fiber.alternate && fiber.alternate.child
@@ -151,7 +154,6 @@ const reconcileChildren = (fiber: Fiber, children: Array<CElement>) => {
 		const sameType = oldFiber && el && el.type === oldFiber.type
 		if (sameType)
 			child = mkFiber(el, { dom: oldFiber?.dom, parent: fiber, alternate: oldFiber, effectTag: "Update" })
-
 		if (!sameType && el) child = mkFiber(el, { dom: null, parent: fiber, alternate: null, effectTag: "Add" })
 		if (!sameType && oldFiber) {
 			oldFiber.effectTag = "Remove"
@@ -166,7 +168,7 @@ const reconcileChildren = (fiber: Fiber, children: Array<CElement>) => {
 
 const render = (element: CElement, dom: HTMLElement) => {
 	if (!_requestIdleCallback) init()
-	wipRoot = mkFiber({ type: "ROOT", props: { children: [element] } }, { dom, alternate: currentRoot })
+	wipRoot = mkFiber({ type: WIP_ROOT, props: { children: [element] } }, { dom, alternate: currentRoot })
 	unmountedFibers = []
 	nextUnitOfWork = wipRoot
 }
@@ -198,32 +200,27 @@ const commitWork = (fiber: NFiber) => {
 	commitWork(fiber.sibling)
 }
 
-const getOldHook = <T>(): InternalUseStateHook<T> | null => {
+type InternalUseStateHook<T> = { state: T; queue: Array<F1<T, T> | T> }
+const getPrevHook = <T>(): InternalUseStateHook<T> | null => {
 	if (!wipFiber) return null
 	const alternate = wipFiber.alternate as FnFiber
 	return alternate && alternate.hooks && alternate.hooks[hookIndex]
 }
 
-type InternalUseStateHook<T> = { state: T; queue: Array<F1<T, T> | T> }
 const useState = <T>(initial: T): UseStateHook<T> => {
-	const oldHook = getOldHook<T>()
-	const hook: InternalUseStateHook<T> = { state: oldHook ? oldHook.state : initial, queue: [] }
-	const actions = oldHook ? oldHook.queue : []
-	hook.state = actions.reduce((acc: T, action) => (action instanceof Function ? action(acc) : action), hook.state)
+	const prevHook = getPrevHook<T>()
+	const hook: InternalUseStateHook<T> = { state: prevHook?.state || initial, queue: [] }
+	hook.state = (prevHook?.queue || []).reduce(
+		(acc: T, action) => (action instanceof Function ? action(acc) : action),
+		hook.state
+	)
 
 	const setState = (action: F1<T, T> | T) => {
 		hook.queue.push(action)
-		wipRoot = mkFiber(
-			{
-				type: "ROOT",
-				props: currentRoot?.props || {}
-			},
-			{
-				dom: currentRoot?.dom || null,
-				alternate: currentRoot
-			}
+		nextUnitOfWork = wipRoot = mkFiber(
+			{ type: WIP_ROOT, props: currentRoot?.props || {} },
+			{ dom: currentRoot?.dom || null, alternate: currentRoot }
 		)
-		nextUnitOfWork = wipRoot
 		unmountedFibers = []
 	}
 
