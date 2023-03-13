@@ -5,7 +5,15 @@ type CTextTag = string | number
 type CTextElement<T extends CTextTag> = { type: string; props: CProps<{ nodeValue: T }> }
 type CElement<T extends Obj = Obj> = { type: string; props: CProps<T> } | CTextElement<CTextTag>
 type NFiber = Fiber | null
-type FnFiber = TypedOmit<Fiber, "type"> & { type: F1<Obj, CElement>; hooks: Array<any> }
+
+type HookBase = { hookTag: Symbol }
+type InternalUseStateHook<T> = HookBase & { state: T; queue: Array<F1<T, T> | T> }
+type InternalUseEffectHook = HookBase & { effect: F0<F0 | void> | null; cancel: F0 | null; deps: Array<any> }
+
+type FnFiber = TypedOmit<Fiber, "type"> & {
+	type: F1<Obj, CElement>
+	hooks: Array<HookBase>
+}
 type Key = string | number
 
 const TEXT_ELEMENT = "TEXT_ELEMENT"
@@ -33,7 +41,6 @@ export type Fiber<T extends Obj = Obj> = {
 }
 
 const keys = <T extends Obj>(o: T) => Object.keys(o) as any as Array<keyof T>
-
 const createElement = <T extends Obj>(
 	type: string,
 	props: T = {} as any,
@@ -187,11 +194,14 @@ const commitWork = (fiber: NFiber) => {
 	switch (fiber.effectTag) {
 		case "Add":
 			if (fiber.dom !== null) domParent.appendChild(fiber.dom)
+			runEffects(fiber as unknown as FnFiber)
 			break
 		case "Update":
 			updateDom(fiber.dom as any, fiber.alternate?.props || { children: [] }, fiber.props)
+			runEffects(fiber as unknown as FnFiber)
 			break
 		case "Remove":
+			cancelEffects(fiber as unknown as FnFiber)
 			commitDeletion(fiber, domParent as HTMLElement)
 			break
 	}
@@ -200,16 +210,47 @@ const commitWork = (fiber: NFiber) => {
 	commitWork(fiber.sibling)
 }
 
-type InternalUseStateHook<T> = { state: T; queue: Array<F1<T, T> | T> }
-const getPrevHook = <T>(): InternalUseStateHook<T> | null => {
+const getPrevHook = () => {
 	if (!wipFiber) return null
 	const alternate = wipFiber.alternate as FnFiber
-	return alternate && alternate.hooks && alternate.hooks[hookIndex]
+	if (!alternate || !alternate.hooks || !alternate.hooks[hookIndex]) return null
+	const hook = alternate.hooks[hookIndex]
+	return isHook(hook) ? hook : null
+}
+
+const useStateTag = Symbol("useState")
+const useEffectTag = Symbol("useEffect")
+
+const isHook = (v: unknown): v is HookBase => (v as HookBase).hookTag !== undefined
+const isUseEffectHook = (v: unknown): v is InternalUseEffectHook => (v as HookBase).hookTag === useEffectTag
+
+const runEffects = ({ hooks }: FnFiber) => {
+	const hs = (hooks || []).filter(isUseEffectHook)
+	hs.forEach(h => (h.cancel = h.effect ? (h.effect as F0<F0>)() : null))
+}
+
+const cancelEffects = ({ hooks }: FnFiber) => (hooks || []).filter(isUseEffectHook).forEach(h => h.cancel && h.cancel())
+
+const areEqual = <T = any>(prev: Array<T> | null, current: Array<T>) =>
+	prev !== null && prev.length === current.length && prev.every((dep, index) => dep === current[index])
+
+const useEffect = (effect: F0<F0 | void>, deps: Array<any>) => {
+	const prevHook = getPrevHook() as InternalUseEffectHook | null
+	const changed = areEqual(prevHook ? prevHook.deps : null, deps) === false
+	const hook: InternalUseEffectHook = {
+		hookTag: useEffectTag,
+		effect: changed ? effect : null,
+		cancel: changed && prevHook ? prevHook.cancel : null,
+		deps
+	}
+	if (wipFiber) wipFiber.hooks.push(hook)
+
+	hookIndex++
 }
 
 const useState = <T>(initial: T): UseStateHook<T> => {
-	const prevHook = getPrevHook<T>()
-	const hook: InternalUseStateHook<T> = { state: prevHook?.state || initial, queue: [] }
+	const prevHook = getPrevHook() as InternalUseStateHook<T> | null
+	const hook: InternalUseStateHook<T> = { state: prevHook?.state || initial, queue: [], hookTag: useStateTag }
 	hook.state = (prevHook?.queue || []).reduce(
 		(acc: T, action) => (action instanceof Function ? action(acc) : action),
 		hook.state
@@ -229,5 +270,14 @@ const useState = <T>(initial: T): UseStateHook<T> => {
 	return [hook.state, setState]
 }
 
-export const CReactInternal = { mkFiber, buildFibers, buildFiber, reconcileChildren, updateDom, getPropertiesDiff }
-export const CReact = { createElement, useState, render }
+export const CReact = { createElement, useState, useEffect, render }
+
+export const CReactInternal = {
+	mkFiber,
+	buildFibers,
+	buildFiber,
+	reconcileChildren,
+	updateDom,
+	getPropertiesDiff,
+	areEqual
+}

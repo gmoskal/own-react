@@ -211,3 +211,13 @@ describe("createElement()", () => {
 		)
 	)
 })
+
+describe("hasDepsChanged()", () => {
+	it("detects changes", () => {
+		expect(CReactInternal.areEqual([], [])).toEqual(true)
+		expect(CReactInternal.areEqual([1], [1])).toEqual(true)
+		expect(CReactInternal.areEqual([], [1])).toEqual(false)
+		expect(CReactInternal.areEqual([1], [])).toEqual(false)
+		expect(CReactInternal.areEqual(null, [])).toEqual(false)
+	})
+})
